@@ -35,6 +35,7 @@ class User(Base):
     club = Column(String, nullable=True)  # Новое поле для клуба (WakeUp | MIET, etc.)
     update_ai = Column(DateTime, nullable=True, default=None)  # Новое поле для даты обновления AI
 
+
 # Модель таблицы Game (без изменений)
 class Game(Base):
     __tablename__ = "games"
@@ -43,6 +44,7 @@ class Game(Base):
     data = Column(Text)  # JSON с полными данными (players, fouls, gameInfo, badgeColor)
     event_id = Column(String, index=True)  # Столбец для привязки к событиям (как строка)
     created_at = Column(DateTime, default=datetime.utcnow)
+
 
 # Создание таблиц (запустите один раз; при изменении модели может потребоваться миграция)
 Base.metadata.create_all(bind=engine)
@@ -61,6 +63,7 @@ except Exception as e:
 finally:
     db.close()
 
+
 # Pydantic модель для валидации входящего JSON для игр (обновлена: добавлены поля для админа)
 class SaveGameData(BaseModel):
     gameId: str = Field(..., description="Идентификатор игры (теперь первичный ключ)")
@@ -73,6 +76,13 @@ class SaveGameData(BaseModel):
     admin_nickname: str = Field(..., description="Никнейм админа для аутентификации")  # Новое поле
     admin_password: str = Field(..., description="Пароль админа для аутентификации")  # Новое поле
 
+
+# Новая Pydantic модель для удаления игры (с проверкой админа)
+class DeleteGameRequest(BaseModel):
+    admin_nickname: str = Field(..., description="Никнейм админа для аутентификации")
+    admin_password: str = Field(..., description="Пароль админа для аутентификации")
+
+
 # Pydantic модели для пользователей (добавлено club в UserCreate)
 class UserCreate(BaseModel):
     email: str
@@ -80,9 +90,11 @@ class UserCreate(BaseModel):
     password: str
     club: str  # Новое поле для клуба (опциональное; сделайте str, если обязательное)
 
+
 class UserLogin(BaseModel):
     nickname: str
     password: str
+
 
 # Новая Pydantic модель для запроса на повышение пользователя до админа
 class PromoteAdminRequest(BaseModel):
@@ -91,12 +103,15 @@ class PromoteAdminRequest(BaseModel):
     target_email: str = Field(..., description="Email пользователя, которого нужно сделать админом")
     target_nickname: str = Field(..., description="Никнейм пользователя, которого нужно сделать админом")
 
+
 # Вспомогательные функции для паролей (без изменений)
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
 
+
 def get_password_hash(password):
     return pwd_context.hash(password)
+
 
 # Вспомогательные функции для JWT (без изменений)
 def create_access_token(data: dict, expires_delta: timedelta = None):
@@ -109,6 +124,7 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
+
 # FastAPI приложение (без изменений)
 app = FastAPI()
 
@@ -120,6 +136,7 @@ app.add_middleware(
     allow_methods=["*"],  # Разрешить все методы (GET, POST и т.д.)
     allow_headers=["*"],  # Разрешить все заголовки
 )
+
 
 # Эндпоинт для регистрации (обновлён: добавлена обработка club и update_ai)
 @app.post("/register")
@@ -175,6 +192,7 @@ async def register(user: UserCreate):
     finally:
         db.close()
 
+
 # Эндпоинт для входа (без изменений)
 @app.post("/login")
 async def login(user: UserLogin):
@@ -208,6 +226,7 @@ async def login(user: UserLogin):
         raise HTTPException(status_code=500, detail=f"Внутренняя ошибка сервера: {str(e)}")
     finally:
         db.close()
+
 
 # Новый эндпоинт для повышения пользователя до админа (только админы могут использовать)
 @app.post("/promote_admin")
@@ -243,6 +262,7 @@ async def promote_admin(request: PromoteAdminRequest):
         raise HTTPException(status_code=500, detail=f"Внутренняя ошибка сервера: {str(e)}")
     finally:
         db.close()
+
 
 # Получить список пользователей (с опциональным фильтром по event_id)
 @app.get("/getUsers")
@@ -281,9 +301,11 @@ async def get_users(event_id: str = None):
     finally:
         db.close()
 
+
 # Сохранить данные игры (обновлено: добавлена проверка админа)
 @app.post("/saveGameData")
 async def save_game_data(data: SaveGameData):
+    print(SaveGameData)
     db = SessionLocal()
     try:
         # Проверка админа: найти по nickname и проверить пароль и роль
@@ -350,6 +372,7 @@ async def save_game_data(data: SaveGameData):
     finally:
         db.close()
 
+
 # Эндпоинт для получения данных игры (без изменений)
 @app.get("/getGameData/{gameId}")
 async def get_game_data(gameId: str):
@@ -368,6 +391,41 @@ async def get_game_data(gameId: str):
         raise HTTPException(status_code=500, detail=f"Ошибка получения данных игры: {str(e)}")
     finally:
         db.close()
+
+
+# Новый эндпоинт для удаления игры (только админы могут использовать)
+@app.delete("/deleteGame/{gameId}")
+async def delete_game(gameId: str, request: DeleteGameRequest):
+    db = SessionLocal()
+    try:
+        # Проверка админа: найти по nickname и проверить пароль и роль
+        admin_user = db.query(User).filter(User.nickname == request.admin_nickname).first()
+        if not admin_user:
+            raise HTTPException(status_code=400, detail="Админ с таким nickname не найден")
+        if not verify_password(request.admin_password, admin_user.hashed_password):
+            raise HTTPException(status_code=400, detail="Неверный пароль админа")
+        if admin_user.role != "admin":
+            raise HTTPException(status_code=403, detail="У вас нет прав для выполнения этого действия (требуется роль admin)")
+
+        # Найти игру по gameId
+        game = db.query(Game).filter(Game.gameId == gameId).first()
+        if not game:
+            raise HTTPException(status_code=404, detail="Игра не найдена")
+
+        # Удалить игру
+        db.delete(game)
+        db.commit()
+
+        return {"message": f"Игра с ID {gameId} успешно удалена"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Ошибка удаления игры: {str(e)}")
+    finally:
+        db.close()
+
 
 @app.get("/getGames")
 async def get_games(limit: int = 10, offset: int = 0):
@@ -400,6 +458,7 @@ async def get_games(limit: int = 10, offset: int = 0):
         raise HTTPException(status_code=500, detail=f"Ошибка получения списка игр: {str(e)}")
     finally:
         db.close()
+
 
 @app.get("/getRating")
 async def get_rating(limit: int = Query(10, description="Количество элементов на странице"),
@@ -467,6 +526,7 @@ async def get_rating(limit: int = Query(10, description="Количество э
         raise HTTPException(status_code=500, detail=f"Ошибка получения рейтинга: {str(e)}")
     finally:
         db.close()
+
 
 @app.get("/getDetailedStats")
 async def get_detailed_stats(
