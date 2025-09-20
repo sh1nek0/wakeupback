@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import create_engine, Column, String, Text, DateTime, Integer
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker
 
 import json
