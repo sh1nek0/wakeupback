@@ -132,7 +132,7 @@ app = FastAPI()
 # CORS middleware для разрешения запросов с React (localhost:3000) (без изменений)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Разрешить запросы с вашего React-сервера
+    allow_origins=["*"],  # Разрешить запросы с вашего React-сервера
     allow_credentials=True,
     allow_methods=["*"],  # Разрешить все методы (GET, POST и т.д.)
     allow_headers=["*"],  # Разрешить все заголовки
