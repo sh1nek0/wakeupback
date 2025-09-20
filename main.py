@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import create_engine, Column, String, Text, DateTime, Integer
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker
+import uvicorn
 
 import json
 from datetime import datetime, timedelta
@@ -704,3 +705,6 @@ async def get_detailed_stats(
         raise HTTPException(status_code=500, detail=f"Ошибка получения детальной статистики: {str(e)}")
     finally:
         db.close()
+
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, workers=4)
